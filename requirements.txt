@@ -1,0 +1,13 @@
+numpy
+pandas
+torch
+gymnasium
+stable-baselines3
+datasets
+huggingface_hub
+scipy
+matplotlib
+streamlit
+wandb
+polars
+pyarrow
