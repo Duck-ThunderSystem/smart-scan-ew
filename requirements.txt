@@ -11,3 +11,4 @@ streamlit
 wandb
 polars
 pyarrow
+h5py
