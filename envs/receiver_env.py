@@ -1,26 +1,34 @@
+import sys
+from pathlib import Path
+
+# Add project root directory to Python path BEFORE importing local modules
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 from src.dataset import TSRDDataLoader
 
+
 class ReceiverEnv(gym.Env):
-    """Custom Gymnasium Environment for Electronic Warfare (EW) Receiver Scheduling."""
+    """Custom Gymnasium Environment for EW Receiver Scheduling with Feature Normalization."""
     metadata = {"render_modes": ["human"]}
 
     def __init__(self):
         super(ReceiverEnv, self).__init__()
         
-        # Load radar dataset
         loader = TSRDDataLoader()
         self.features, self.labels, self.feature_names = loader.load_data()
+        
+        # Continuous feature normalization (z-score scaling)
+        self.features_mean = np.mean(self.features, axis=0)
+        self.features_std = np.std(self.features, axis=0) + 1e-8
+        self.normalized_features = (self.features - self.features_mean) / self.features_std
+        
         self.num_samples = len(self.features)
         self.current_idx = 0
 
-        # Action Space: Select which frequency band/emitter to tune to (e.g., 4 discrete channels)
         self.action_space = spaces.Discrete(4)
-
-        # Observation Space: Radar pulse parameters [UTCTime, RF, PulseWidth, AOA, PA]
-        # Using 5 continuous feature values
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(5,), dtype=np.float32
         )
@@ -28,33 +36,29 @@ class ReceiverEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.current_idx = 0
-        observation = self.features[self.current_idx].astype(np.float32)
-        info = {}
-        return observation, info
+        observation = self.normalized_features[self.current_idx].astype(np.float32)
+        return observation, {}
 
     def step(self, action):
-        # Determine target label for current pulse sample
         target_label = int(self.labels[self.current_idx][0])
         
-        # Reward mechanism: positive reward if action matches target emitter class
-        reward = 1.0 if action == target_label else -0.1
+        # Reward mechanism: positive reward on hit, penalty on miss
+        reward = 1.0 if action == target_label else -0.5
 
         self.current_idx += 1
         terminated = self.current_idx >= self.num_samples - 1
         truncated = False
 
-        observation = self.features[self.current_idx].astype(np.float32) if not terminated else np.zeros((5,), dtype=np.float32)
-        info = {}
+        observation = (
+            self.normalized_features[self.current_idx].astype(np.float32)
+            if not terminated
+            else np.zeros((5,), dtype=np.float32)
+        )
+        return observation, reward, terminated, truncated, {}
 
-        return observation, reward, terminated, truncated, info
 
 if __name__ == "__main__":
     env = ReceiverEnv()
     obs, info = env.reset()
-    print("Environment initialized successfully!")
-    print(f"Initial Observation: {obs}")
-    
-    # Test a dummy step
-    action = env.action_space.sample()
-    obs, reward, terminated, truncated, info = env.step(action)
-    print(f"Step Action: {action} | Reward: {reward} | Next Obs Shape: {obs.shape}")
+    print("Normalized Environment Initialized Successfully!")
+    print(f"Normalized Initial Obs: {obs}")
